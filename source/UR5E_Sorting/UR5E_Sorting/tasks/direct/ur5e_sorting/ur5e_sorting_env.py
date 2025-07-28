@@ -44,6 +44,9 @@ class UR5ESortingEnv(DirectRLEnv):
 
         self.ur5e_joint_pos = self.ur5e.data.joint_pos # all 12 joints, inlcuding unactuated ones
         self.ur5e_joint_vel = self.ur5e.data.joint_vel
+        
+        self.tray_episode_initial_pos = self.tray.data.root_pos_w.clone()
+        self.tray_episode_initial_quat = self.tray.data.root_quat_w.clone()
 
     def _setup_scene(self):
 
@@ -79,21 +82,43 @@ class UR5ESortingEnv(DirectRLEnv):
         self.tray = RigidObject(cfg=tray_cfg)
         self.scene.rigid_objects["tray"] = self.tray
 
-        # spawn a cuboid with colliders and rigid body
-        object_cfg = RigidObjectCfg(
-            prim_path="/World/envs/env_.*/object",
-            spawn=sim_utils.CuboidCfg(
-                size=(0.05, 0.05, 0.05),
-                rigid_props=sim_utils.RigidBodyPropertiesCfg(),
-                mass_props=sim_utils.MassPropertiesCfg(mass=0.25),
-                collision_props=sim_utils.CollisionPropertiesCfg(),
-                physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0),
-                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 1.0), metallic=0.5),
-            ),
-            init_state=RigidObjectCfg.InitialStateCfg(pos=(0.6, 0.0, 1.25)),
-        )
-        self.object = RigidObject(cfg=object_cfg)
-        self.scene.rigid_objects["object"] = self.object
+        # Spawn cubes (class A)
+        for i in range(self.cfg.max_num_of_objects_class):
+            object_name = f"object{self.cfg.class_names[0]}{i}"
+            object_cfg = RigidObjectCfg(
+                prim_path=f"/World/envs/env_.*/{object_name}",
+                spawn=sim_utils.CuboidCfg(
+                    size=(0.05, 0.05, 0.05),
+                    rigid_props=sim_utils.RigidBodyPropertiesCfg(),
+                    mass_props=sim_utils.MassPropertiesCfg(mass=0.10),
+                    collision_props=sim_utils.CollisionPropertiesCfg(),
+                    physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0),
+                    visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 1.0), metallic=0.5),
+                ),
+                init_state=RigidObjectCfg.InitialStateCfg(pos=(0.6, 0.0, 1.25)),
+            )
+            self.scene.rigid_objects[object_name] = RigidObject(cfg=object_cfg)
+
+        # Spawn cylinders (class B)
+        for i in range(self.cfg.max_num_of_objects_class):
+            object_name = f"object{self.cfg.class_names[1]}{i}"
+            object_cfg = RigidObjectCfg(
+                prim_path=f"/World/envs/env_.*/{object_name}",
+                spawn=sim_utils.CylinderCfg(
+                    radius=0.03,
+                    height=0.05,
+                    rigid_props=sim_utils.RigidBodyPropertiesCfg(),
+                    mass_props=sim_utils.MassPropertiesCfg(mass=0.10),
+                    collision_props=sim_utils.CollisionPropertiesCfg(),
+                    physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0),
+                    visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.3, 0.3, 0.3), metallic=0.5),
+                ),
+                init_state=RigidObjectCfg.InitialStateCfg(pos=(0.6, 0.0, 1.25)),
+            )
+            self.scene.rigid_objects[object_name] = RigidObject(cfg=object_cfg)
+
+        # Object to track
+        self.object = self.scene.rigid_objects[f"object{self.cfg.class_names[0]}{0}"]
 
         # robot
         self.ur5e = Articulation(self.cfg.ur5e_cfg)
@@ -174,7 +199,9 @@ class UR5ESortingEnv(DirectRLEnv):
             self.object,
             self.ee_frame,
             self.ur5e_joint_pos,
-            self.tray
+            self.tray,
+            self.tray_episode_initial_pos,
+            self.tray_episode_initial_quat,
         )
         return total_reward
 
@@ -206,29 +233,38 @@ class UR5ESortingEnv(DirectRLEnv):
 
         # Reset tray
         root_states = self.tray.data.default_root_state[env_ids].clone()
-        rand_samples = sample_uniform(
-            lower=torch.tensor([-0.0, -0.0, 0.0], device=self.device),
-            upper=torch.tensor([0.0, 0.0, 0.0], device=self.device),
+        rand_samples_tray = sample_uniform(
+            lower=torch.tensor([-0.03, -0.03, 0.0], device=self.device),
+            upper=torch.tensor([0.03, 0.03, 0.0], device=self.device),
             size=(len(env_ids), 3),
             device=self.device,
         )
-        positions = root_states[:, :3] + self.scene.env_origins[env_ids] + rand_samples
+        positions = root_states[:, :3] + self.scene.env_origins[env_ids] + rand_samples_tray
         orientations = root_states[:, 3:7]
         velocities = torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], device=self.device).repeat(len(env_ids), 1)
         self.tray.write_root_state_to_sim(torch.cat([positions, orientations, velocities], dim=-1), env_ids=env_ids)
 
-        # Randomize object position
-        root_states = self.object.data.default_root_state[env_ids].clone()
-        rand_samples = sample_uniform(
-            lower=torch.tensor([-0.15, -0.2, 0.0], device=self.device),
-            upper=torch.tensor([0.15, 0.2, 0.0], device=self.device),
-            size=(len(env_ids), 3),
-            device=self.device,
-        )
-        positions = root_states[:, :3] + self.scene.env_origins[env_ids] + rand_samples
-        orientations = root_states[:, 3:7]
-        velocities = torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], device=self.device).repeat(len(env_ids), 1)
-        self.object.write_root_state_to_sim(torch.cat([positions, orientations, velocities], dim=-1), env_ids=env_ids)
+        self.tray_episode_initial_pos = self.tray.data.root_pos_w.clone()
+        self.tray_episode_initial_quat = self.tray.data.root_quat_w.clone()
+
+        # Randomize all objects
+        for class_name in self.cfg.class_names:
+            for i in range(self.cfg.max_num_of_objects_class):
+                object_name = f"object{class_name}{i}"
+                obj = self.scene.rigid_objects[object_name]
+
+                # Randomize object pose
+                root_states = obj.data.default_root_state[env_ids].clone()
+                rand_samples_object = sample_uniform(
+                    lower=torch.tensor([-0.175, -0.25, 0.00], device=self.device),
+                    upper=torch.tensor([0.175, 0.25, 0.40], device=self.device),
+                    size=(len(env_ids), 3),
+                    device=self.device,
+                )
+                positions = root_states[:, :3] + self.scene.env_origins[env_ids] + rand_samples_object + rand_samples_tray
+                orientations = root_states[:, 3:7]
+                velocities = torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], device=self.device).repeat(len(env_ids), 1)
+                obj.write_root_state_to_sim(torch.cat([positions, orientations, velocities], dim=-1), env_ids=env_ids)
 
 
 #@torch.jit.script
@@ -243,7 +279,9 @@ def compute_rewards(
     object: RigidObject,
     ee_frame: FrameTransformer,
     ur5e_joint_pos: torch.Tensor,
-    tray: RigidObject
+    tray: RigidObject,
+    tray_episode_initial_pos: torch.Tensor,
+    tray_episode_initial_quat: torch.Tensor,
 ):
     ee_pos_track_rew = ee_pos_track_rew_weight * object_position_error(object, ee_frame)
     ee_pos_track_fg_rew = ee_pos_track_fg_rew_weight * object_position_error_tanh(object, ee_frame, std=0.1)
@@ -251,7 +289,7 @@ def compute_rewards(
     lifting_rew = lifting_rew_weight * object_is_lifted(object, ee_frame, std=0.1, std_height=0.1)
     ground_hit_avoidance_rew = ground_hit_avoidance_rew_weight * ground_hit_avoidance(object, ee_frame)
     joint_2_tuning_rew = joint_2_tuning_rew_weight * joint_2_tuning(ur5e_joint_pos)
-    tray_moved_rew = tray_moved_rew_weight * tray_moved(tray)
+    tray_moved_rew = tray_moved_rew_weight * tray_moved(tray, tray_episode_initial_pos, tray_episode_initial_quat, std=0.1)
     
     total_reward = ee_pos_track_rew + ee_pos_track_fg_rew + ee_orient_track_rew + lifting_rew + ground_hit_avoidance_rew + joint_2_tuning_rew + tray_moved_rew
     return total_reward

@@ -6,11 +6,16 @@ from isaaclab.assets import RigidObject
 from isaaclab.sensors.frame_transformer.frame_transformer import FrameTransformer
 from isaaclab.utils.math import quat_error_magnitude, quat_mul
 
-def tray_moved(tray: RigidObject) -> torch.Tensor: 
-    tray_vel = tray.data.root_vel_w
-    tray_speed = torch.norm(tray_vel, dim=1)
+def tray_moved(tray: RigidObject, tray_episode_initial_pos: torch.Tensor, tray_episode_initial_quat: torch.Tensor, std: float) -> torch.Tensor: 
+    tray_root_pos = tray.data.root_pos_w
+    tray_root_quat = tray.data.root_quat_w
 
-    return tray_speed
+    tray_pos_diff = torch.norm(tray_root_pos - tray_episode_initial_pos, dim=-1)
+    tray_quat_diff = quat_error_magnitude(tray_root_quat, tray_episode_initial_quat)
+
+    reward = torch.tanh((tray_pos_diff + tray_quat_diff) / std)
+
+    return reward
 
 def joint_2_tuning(ur5e_joint_pos: torch.Tensor) -> torch.Tensor:
     joint_2_pos = ur5e_joint_pos[:, 1]  # Joint 2 position

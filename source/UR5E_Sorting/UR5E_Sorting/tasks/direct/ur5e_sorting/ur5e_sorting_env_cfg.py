@@ -27,17 +27,17 @@ class UR5ESortingEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=1, env_spacing=2.5, replicate_physics=True)
 
     # reward weights
-    ee_pos_track_rew_weight = -3.0
-    ee_pos_track_fg_rew_weight = 10.0
-    ee_orient_track_rew_weight = -1.0
-    lifting_rew_weight = 75.0
-    ground_hit_avoidance_rew_weight = 1.0
-    joint_2_tuning_rew_weight = 2.0
-    tray_moved_rew_weight = 0.0
+    ee_pos_track_rew_weight = -3.0 # Negative
+    ee_pos_track_fg_rew_weight = 10.0 # Positive
+    ee_orient_track_rew_weight = -1.0 # Negative
+    lifting_rew_weight = 75.0 # Positive
+    ground_hit_avoidance_rew_weight = 1.0 # Positive
+    joint_2_tuning_rew_weight = 2.0 # Negative
+    tray_moved_rew_weight = -0.0 # Negative
 
-    # camera settings
-    camera_width = 1280
-    camera_height = 960
+    # max number of objects
+    max_num_of_objects_class = 20
+    class_names = ["A", "B"]
 
     # spaces definition
     action_space = 7
