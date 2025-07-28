@@ -85,35 +85,53 @@ class UR5ESortingEnv(DirectRLEnv):
         # Spawn cubes (class A)
         for i in range(self.cfg.max_num_of_objects_class):
             object_name = f"object{self.cfg.class_names[0]}{i}"
+            cube_size = sample_uniform(
+                lower=torch.tensor([0.03, 0.03, 0.03], device=self.device),
+                upper=torch.tensor([0.06, 0.06, 0.06], device=self.device),
+                size=(3,),
+                device=self.device,
+            ).tolist()
             object_cfg = RigidObjectCfg(
                 prim_path=f"/World/envs/env_.*/{object_name}",
                 spawn=sim_utils.CuboidCfg(
-                    size=(0.05, 0.05, 0.05),
+                    size=tuple(cube_size),
                     rigid_props=sim_utils.RigidBodyPropertiesCfg(),
                     mass_props=sim_utils.MassPropertiesCfg(mass=0.10),
                     collision_props=sim_utils.CollisionPropertiesCfg(),
                     physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0),
                     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 1.0), metallic=0.5),
                 ),
-                init_state=RigidObjectCfg.InitialStateCfg(pos=(0.6, 0.0, 1.25)),
+                init_state=RigidObjectCfg.InitialStateCfg(pos=(0.6, 0.0, 1.20)),
             )
             self.scene.rigid_objects[object_name] = RigidObject(cfg=object_cfg)
 
         # Spawn cylinders (class B)
         for i in range(self.cfg.max_num_of_objects_class):
             object_name = f"object{self.cfg.class_names[1]}{i}"
+            random_radius = sample_uniform(
+                lower=torch.tensor([0.02], device=self.device),
+                upper=torch.tensor([0.03], device=self.device),
+                size=(1,),
+                device=self.device,
+            ).item()
+            random_height = sample_uniform(
+                lower=torch.tensor([0.03], device=self.device),
+                upper=torch.tensor([0.06], device=self.device),
+                size=(1,),
+                device=self.device,
+            ).item()
             object_cfg = RigidObjectCfg(
                 prim_path=f"/World/envs/env_.*/{object_name}",
                 spawn=sim_utils.CylinderCfg(
-                    radius=0.03,
-                    height=0.05,
+                    radius=random_radius,
+                    height=random_height,
                     rigid_props=sim_utils.RigidBodyPropertiesCfg(),
                     mass_props=sim_utils.MassPropertiesCfg(mass=0.10),
                     collision_props=sim_utils.CollisionPropertiesCfg(),
                     physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0),
                     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.3, 0.3, 0.3), metallic=0.5),
                 ),
-                init_state=RigidObjectCfg.InitialStateCfg(pos=(0.6, 0.0, 1.25)),
+                init_state=RigidObjectCfg.InitialStateCfg(pos=(0.6, 0.0, 1.20)),
             )
             self.scene.rigid_objects[object_name] = RigidObject(cfg=object_cfg)
 
@@ -206,6 +224,7 @@ class UR5ESortingEnv(DirectRLEnv):
         return total_reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
+        # Check if the object is dropped
         object_height = self.object.data.root_pos_w[:, 2]
         object_dropped = object_height < 0.8
 
@@ -257,7 +276,7 @@ class UR5ESortingEnv(DirectRLEnv):
                 root_states = obj.data.default_root_state[env_ids].clone()
                 rand_samples_object = sample_uniform(
                     lower=torch.tensor([-0.175, -0.25, 0.00], device=self.device),
-                    upper=torch.tensor([0.175, 0.25, 0.40], device=self.device),
+                    upper=torch.tensor([0.175, 0.25, 0.25], device=self.device),
                     size=(len(env_ids), 3),
                     device=self.device,
                 )
@@ -265,7 +284,11 @@ class UR5ESortingEnv(DirectRLEnv):
                 orientations = root_states[:, 3:7]
                 velocities = torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], device=self.device).repeat(len(env_ids), 1)
                 obj.write_root_state_to_sim(torch.cat([positions, orientations, velocities], dim=-1), env_ids=env_ids)
-
+        
+        # Randomize the object to track
+        random_class = self.cfg.class_names[torch.randint(0, len(self.cfg.class_names), (1,)).item()]
+        random_index = torch.randint(0, self.cfg.max_num_of_objects_class, (1,)).item()
+        self.object = self.scene.rigid_objects[f"object{random_class}{random_index}"]
 
 #@torch.jit.script
 def compute_rewards(
