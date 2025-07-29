@@ -48,6 +48,9 @@ class UR5ESortingEnv(DirectRLEnv):
         self.tray_episode_initial_pos = self.tray.data.root_pos_w.clone()
         self.tray_episode_initial_quat = self.tray.data.root_quat_w.clone()
 
+        self.number_of_visible_objects = 1
+        self.time_steps = 0
+
     def _setup_scene(self):
 
         # Ground-plane
@@ -138,6 +141,14 @@ class UR5ESortingEnv(DirectRLEnv):
         # Object to track
         self.object = self.scene.rigid_objects[f"object{self.cfg.class_names[0]}{0}"]
 
+        # Non-visible objects tray
+        nonvisible_objects_tray = sim_utils.UsdFileCfg(
+            usd_path=os.path.join(os.path.dirname(__file__), "models/tray.usd"),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            scale=(3.0, 3.0, 15.0),
+        )
+        nonvisible_objects_tray.func("/World/envs/env_.*/nonvisible_objects_tray", nonvisible_objects_tray, translation=(0.6, 0.0, 5.0), orientation=(0.707, 0.0, 0.0, 0.707))
+
         # robot
         self.ur5e = Articulation(self.cfg.ur5e_cfg)
         self.scene.articulations["ur5e"] = self.ur5e
@@ -161,6 +172,17 @@ class UR5ESortingEnv(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self.actions = actions.clone()
+
+        # increase time steps
+        if self.time_steps == 0:
+            # Print info about the training and the objects
+            print(f"Episode duration: {self.max_episode_length} timesteps")
+            print(f"Number of objects: {self.cfg.max_num_of_objects_class}")
+            print(f"Timesteps to start adding objects: {self.cfg.start_adding_objects_timestep}")
+            print(f"Timesteps interval for adding objects: {self.cfg.adding_objects_timesteps_interval}")
+            print(f"Required number of timesteps to add all objects: {(self.cfg.max_num_of_objects_class - 1)*self.cfg.adding_objects_timesteps_interval + self.cfg.start_adding_objects_timestep}")
+            
+        self.time_steps += 1
 
     def _apply_action(self) -> None:
         # Separate arm actions and gripper actions
@@ -272,11 +294,14 @@ class UR5ESortingEnv(DirectRLEnv):
                 object_name = f"object{class_name}{i}"
                 obj = self.scene.rigid_objects[object_name]
 
+                object_is_visible = True if i < self.number_of_visible_objects else False
+                z_increment_for_visibility = 0.0 if object_is_visible else 4.2
+
                 # Randomize object pose
                 root_states = obj.data.default_root_state[env_ids].clone()
                 rand_samples_object = sample_uniform(
-                    lower=torch.tensor([-0.175, -0.25, 0.00], device=self.device),
-                    upper=torch.tensor([0.175, 0.25, 0.25], device=self.device),
+                    lower=torch.tensor([-0.175, -0.25, z_increment_for_visibility], device=self.device),
+                    upper=torch.tensor([0.175, 0.25, z_increment_for_visibility + 0.25], device=self.device),
                     size=(len(env_ids), 3),
                     device=self.device,
                 )
@@ -287,8 +312,15 @@ class UR5ESortingEnv(DirectRLEnv):
         
         # Randomize the object to track
         random_class = self.cfg.class_names[torch.randint(0, len(self.cfg.class_names), (1,)).item()]
-        random_index = torch.randint(0, self.cfg.max_num_of_objects_class, (1,)).item()
+        random_index = torch.randint(0, self.number_of_visible_objects, (1,)).item()
         self.object = self.scene.rigid_objects[f"object{random_class}{random_index}"]
+
+        # Gradually increase the number of visible objects in the scene
+        if self.time_steps >= self.cfg.start_adding_objects_timestep and (self.time_steps - self.cfg.start_adding_objects_timestep) % self.cfg.adding_objects_timesteps_interval == 0:
+            self.number_of_visible_objects += 1
+            if self.number_of_visible_objects > self.cfg.max_num_of_objects_class:
+                self.number_of_visible_objects = self.cfg.max_num_of_objects_class
+
 
 #@torch.jit.script
 def compute_rewards(

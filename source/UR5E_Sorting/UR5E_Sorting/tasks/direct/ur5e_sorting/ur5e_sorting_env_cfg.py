@@ -36,8 +36,12 @@ class UR5ESortingEnvCfg(DirectRLEnvCfg):
     tray_moved_rew_weight = -0.0 # Negative
 
     # max number of objects
-    max_num_of_objects_class = 20
+    max_num_of_objects_class = 15
     class_names = ["A", "B"]
+
+    # curriculum learning settings
+    start_adding_objects_timestep = 7500
+    adding_objects_timesteps_interval = 1000
 
     # spaces definition
     action_space = 7
@@ -45,5 +49,7 @@ class UR5ESortingEnvCfg(DirectRLEnvCfg):
         "robot_state": 19
     }
     state_space = 0
+
+    sim.physx.gpu_max_rigid_patch_count = 1024*1024
 
     
