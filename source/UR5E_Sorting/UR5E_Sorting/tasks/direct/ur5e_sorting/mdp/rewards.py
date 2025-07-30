@@ -43,9 +43,9 @@ def object_position_error_tanh(object: RigidObject, ee_frame: FrameTransformer, 
     reward = 1 - torch.tanh(object_ee_distance / std)
     return reward
 
-def object_is_lifted(object: RigidObject, ee_frame: FrameTransformer, std: float, std_height: float) -> torch.Tensor:
-    object_height_from_initial = object.data.root_pos_w[:, 2] - 1.122
-    object_height_reward = torch.tanh(object_height_from_initial / std_height)
+def object_is_lifted(object: RigidObject, ee_frame: FrameTransformer, std: float, std_height: float, desired_height: float) -> torch.Tensor:
+    object_height_from_desired = desired_height - object.data.root_pos_w[:, 2]
+    object_height_reward = 1 - torch.square(torch.tanh(object_height_from_desired / std_height))
 
     reach_reward = object_position_error_tanh(object, ee_frame, std)
     reward = reach_reward * object_height_reward

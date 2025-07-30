@@ -350,7 +350,7 @@ def compute_rewards(
     ee_pos_track_rew = ee_pos_track_rew_weight * object_position_error(object, ee_frame)
     ee_pos_track_fg_rew = ee_pos_track_fg_rew_weight * object_position_error_tanh(object, ee_frame, std=0.1)
     ee_orient_track_rew = ee_orient_track_rew_weight * end_effector_orientation_error(ee_frame)
-    lifting_rew = lifting_rew_weight * object_is_lifted(object, ee_frame, std=0.1, std_height=0.1)
+    lifting_rew = lifting_rew_weight * object_is_lifted(object, ee_frame, std=0.1, std_height=0.1, desired_height=1.3)
     ground_hit_avoidance_rew = ground_hit_avoidance_rew_weight * ground_hit_avoidance(object, ee_frame)
     joint_2_tuning_rew = joint_2_tuning_rew_weight * joint_2_tuning(ur5e_joint_pos)
     tray_moved_rew = tray_moved_rew_weight * tray_moved(tray, tray_episode_initial_pos, tray_episode_initial_quat, std=0.1)
