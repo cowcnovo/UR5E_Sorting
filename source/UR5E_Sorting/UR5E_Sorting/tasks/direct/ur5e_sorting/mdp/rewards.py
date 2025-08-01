@@ -31,28 +31,29 @@ def end_effector_orientation_error(ee_frame: FrameTransformer) -> torch.Tensor:
 
     return quat_error_magnitude(curr_quat_w, des_quat_w)
 
-def object_position_error(object: RigidObject, ee_frame: FrameTransformer) -> torch.Tensor:
-    cube_pos_w = object.data.root_pos_w  # Object position in world frame
+def object_position_error(tracking_object_positions: torch.Tensor, ee_frame: FrameTransformer) -> torch.Tensor:
+    cube_pos_w = tracking_object_positions  # Object position in world frame
     ee_pos_w = ee_frame.data.target_pos_w[..., 0, :]  # End-effector position in world frame
 
     object_ee_distance = torch.norm(ee_pos_w - cube_pos_w, dim=1)
     return object_ee_distance
 
-def object_position_error_tanh(object: RigidObject, ee_frame: FrameTransformer, std: float) -> torch.Tensor:
-    object_ee_distance = object_position_error(object, ee_frame)
+def object_position_error_tanh(tracking_object_positions: torch.Tensor, ee_frame: FrameTransformer, std: float) -> torch.Tensor:
+    object_ee_distance = object_position_error(tracking_object_positions, ee_frame)
     reward = 1 - torch.tanh(object_ee_distance / std)
     return reward
 
-def object_is_lifted(object: RigidObject, ee_frame: FrameTransformer, std: float, std_height: float, desired_height: float) -> torch.Tensor:
-    object_height_from_desired = desired_height - object.data.root_pos_w[:, 2]
+def object_is_lifted(tracking_object_positions: torch.Tensor, ee_frame: FrameTransformer, std: float, std_height: float, desired_height: float) -> torch.Tensor:
+    object_height_from_desired = desired_height - tracking_object_positions[:, 2]
     object_height_reward = 1 - torch.square(torch.tanh(object_height_from_desired / std_height))
 
-    reach_reward = object_position_error_tanh(object, ee_frame, std)
+    reach_reward = object_position_error_tanh(tracking_object_positions, ee_frame, std)
     reward = reach_reward * object_height_reward
+
     return reward
 
-def ground_hit_avoidance(object: RigidObject, ee_frame: FrameTransformer) -> torch.Tensor:
-    cube_z_pos_w = object.data.root_pos_w[:, 2]
+def ground_hit_avoidance(tracking_object_positions: torch.Tensor, ee_frame: FrameTransformer) -> torch.Tensor:
+    cube_z_pos_w = tracking_object_positions[:, 2]
     ee_z_pos_w = ee_frame.data.target_pos_w[..., 0, 2]
 
     height = ee_z_pos_w - cube_z_pos_w

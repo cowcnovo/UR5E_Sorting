@@ -48,9 +48,18 @@ class UR5ESortingEnv(DirectRLEnv):
         self.tray_episode_initial_pos = self.tray.data.root_pos_w.clone()
         self.tray_episode_initial_quat = self.tray.data.root_quat_w.clone()
 
-        self.number_of_visible_objects_class = 1
-        self.indices_of_visible_objects_class = [0]
         self.time_steps = 0
+        self.number_of_visible_objects_class = 1
+        self.indices_of_visible_objects_class = torch.zeros(
+            (self.num_envs, self.cfg.max_num_of_objects_class), dtype=torch.int, device=self.device
+        )
+        self.tracking_object_index = torch.zeros(
+            (self.num_envs, ), dtype=torch.int, device=self.device
+        )
+        self.tracking_object_class = torch.zeros(
+            (self.num_envs, ), dtype=torch.int, device=self.device
+        )
+        
 
     def _setup_scene(self):
 
@@ -139,9 +148,6 @@ class UR5ESortingEnv(DirectRLEnv):
             )
             self.scene.rigid_objects[object_name] = RigidObject(cfg=object_cfg)
 
-        # Object to track
-        self.object = self.scene.rigid_objects[f"object{self.cfg.class_names[0]}{0}"]
-
         # Non-visible objects tray
         nonvisible_objects_tray = sim_utils.UsdFileCfg(
             usd_path=os.path.join(os.path.dirname(__file__), "models/tray.usd"),
@@ -201,9 +207,17 @@ class UR5ESortingEnv(DirectRLEnv):
         )
         self.ur5e.set_joint_position_target(gripper_joint_positions, joint_ids=self.gripper_joints_ids)
 
+    def get_tracking_object_positions(self) -> torch.Tensor:
+        object_pos_w = torch.zeros((self.num_envs, 3), device=self.device)
+        for env in range(self.num_envs):
+            object_name = f"object{self.cfg.class_names[self.tracking_object_class[env]]}{self.tracking_object_index[env]}"
+            object = self.scene.rigid_objects[object_name]
+            object_pos_w[env] = object.data.root_pos_w[env, :3]
+
+        return object_pos_w
+
     def _get_observations(self) -> dict:
-        # Determine object position in the robot's base frame
-        object_pos_w = self.object.data.root_pos_w[:, :3]  # Object position in world frame
+        object_pos_w = self.get_tracking_object_positions()
         robot_pos_w = self.ur5e.data.root_state_w[:, :3]  # Robot base position in world frame
         robot_quat_w = self.ur5e.data.root_state_w[:, 3:7]  # Robot base orientation in world frame
         object_pos_b, _ = subtract_frame_transforms(robot_pos_w, robot_quat_w, object_pos_w)
@@ -237,7 +251,7 @@ class UR5ESortingEnv(DirectRLEnv):
             self.cfg.ground_hit_avoidance_rew_weight,
             self.cfg.joint_2_tuning_rew_weight,
             self.cfg.tray_moved_rew_weight,
-            self.object,
+            self.get_tracking_object_positions(),
             self.ee_frame,
             self.ur5e_joint_pos,
             self.tray,
@@ -247,8 +261,8 @@ class UR5ESortingEnv(DirectRLEnv):
         return total_reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
-        # Check if the object is dropped
-        object_height = self.object.data.root_pos_w[:, 2]
+        # Check if the ´tracking object is dropped
+        object_height = self.get_tracking_object_positions()[:, 2]
         object_dropped = object_height < 0.8
 
         # Check if the episode has timed out
@@ -289,20 +303,32 @@ class UR5ESortingEnv(DirectRLEnv):
         self.tray_episode_initial_pos = self.tray.data.root_pos_w.clone()
         self.tray_episode_initial_quat = self.tray.data.root_quat_w.clone()
 
-        # Gradually increase the number of visible objects in the scene
+        # Gradually increase the number of visible objects in the scene (globally across all environments)
         if self.time_steps >= self.cfg.start_adding_objects_timestep and (self.time_steps - self.cfg.start_adding_objects_timestep) % self.cfg.adding_objects_timesteps_interval == 0:
             self.number_of_visible_objects_class += 1
             if self.number_of_visible_objects_class > self.cfg.max_num_of_objects_class:
                 self.number_of_visible_objects_class = self.cfg.max_num_of_objects_class
         
-        # Randomize the selected visible objects
-        # Create a list of size number_of_visible_objects with random indices between 0 and self.cfg.max_num_of_objects_class - 1, without repition
-        self.indices_of_visible_objects_class = torch.randperm(self.cfg.max_num_of_objects_class, device=self.device)[:self.number_of_visible_objects_class].tolist()
+        # Create a list of size (num_envs, self.number_of_visible_objects_class):
+        # with random indices between 0 and self.cfg.max_num_of_objects_class - 1, without repitition
+        self.indices_of_visible_objects_class[env_ids, :self.number_of_visible_objects_class] = torch.randint(
+            low=0, high=self.cfg.max_num_of_objects_class,
+            size=(len(env_ids), self.number_of_visible_objects_class),
+            device=self.device,
+            dtype=torch.int,
+        )
 
-        # Randomize the object to track
-        random_class = self.cfg.class_names[torch.randint(0, len(self.cfg.class_names), (1,)).item()]
-        random_index = self.indices_of_visible_objects_class[torch.randint(0, len(self.indices_of_visible_objects_class), (1,)).item()]
-        self.object = self.scene.rigid_objects[f"object{random_class}{random_index}"]
+        # Randomize the object to track - pick a random class, and pick a random index from self.indices_of_visible_objects_class
+        self.tracking_object_class[env_ids] = torch.randint(
+            low=0, high=len(self.cfg.class_names), size=(len(env_ids),),
+            device=self.device,
+            dtype=torch.int,
+        )
+        self.tracking_object_index[env_ids] = self.indices_of_visible_objects_class[env_ids, torch.randint(
+            low=0, high=self.number_of_visible_objects_class, size=(len(env_ids),),
+            device=self.device,
+            dtype=torch.int,
+        )]
 
         # Randomize all objects
         for class_name in self.cfg.class_names:
@@ -310,26 +336,23 @@ class UR5ESortingEnv(DirectRLEnv):
                 object_name = f"object{class_name}{i}"
                 obj = self.scene.rigid_objects[object_name]
 
-                object_is_visible = True if i in self.indices_of_visible_objects_class else False
-                z_increment_for_visibility = 0.0 if object_is_visible else 4.2
+                # Of size, (len(env_ids),), - check if the number i is in the self.indices_of_visible_objects_class[env_ids, :self.number_of_visible_objects_class]
+                # Also, convert to int
+                object_is_visible = (self.indices_of_visible_objects_class[env_ids, :self.number_of_visible_objects_class] == i).any(dim=1).int()
+                z_increment_for_visibility = (1 - object_is_visible) * 4.2  # If the object is not visible, move it up
 
-                # Randomize object pose
+                # Randomize object pose - the lower and uppoer bounds should be of size (len(env_ids), 3)
                 root_states = obj.data.default_root_state[env_ids].clone()
-                rand_samples_object = sample_uniform(
-                    lower=torch.tensor([-0.175, -0.25, z_increment_for_visibility], device=self.device),
-                    upper=torch.tensor([0.175, 0.25, z_increment_for_visibility + 0.25], device=self.device),
-                    size=(len(env_ids), 3),
-                    device=self.device,
-                )
+                
+                x_random = torch.rand(len(env_ids), device=self.device) * 0.35 - 0.175
+                y_random = torch.rand(len(env_ids), device=self.device) * 0.50 - 0.25
+                z_random = z_increment_for_visibility + torch.rand(len(env_ids), device=self.device) * 0.25
+                rand_samples_object = torch.stack([x_random, y_random, z_random], dim=-1)
+
                 positions = root_states[:, :3] + self.scene.env_origins[env_ids] + rand_samples_object + rand_samples_tray
                 orientations = root_states[:, 3:7]
                 velocities = torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], device=self.device).repeat(len(env_ids), 1)
                 obj.write_root_state_to_sim(torch.cat([positions, orientations, velocities], dim=-1), env_ids=env_ids)
-
-        # Print info
-        print("\nNumber of visible objects:", self.number_of_visible_objects_class)
-        print("Indices of visible objects:", self.indices_of_visible_objects_class)
-        print("Object to track:", self.object.cfg.prim_path)
 
 #@torch.jit.script
 def compute_rewards(
@@ -340,18 +363,18 @@ def compute_rewards(
     ground_hit_avoidance_rew_weight: float,
     joint_2_tuning_rew_weight: float,
     tray_moved_rew_weight: float,
-    object: RigidObject,
+    tracking_object_positions: torch.Tensor,
     ee_frame: FrameTransformer,
     ur5e_joint_pos: torch.Tensor,
     tray: RigidObject,
     tray_episode_initial_pos: torch.Tensor,
     tray_episode_initial_quat: torch.Tensor,
 ):
-    ee_pos_track_rew = ee_pos_track_rew_weight * object_position_error(object, ee_frame)
-    ee_pos_track_fg_rew = ee_pos_track_fg_rew_weight * object_position_error_tanh(object, ee_frame, std=0.1)
+    ee_pos_track_rew = ee_pos_track_rew_weight * object_position_error(tracking_object_positions, ee_frame)
+    ee_pos_track_fg_rew = ee_pos_track_fg_rew_weight * object_position_error_tanh(tracking_object_positions, ee_frame, std=0.1)
     ee_orient_track_rew = ee_orient_track_rew_weight * end_effector_orientation_error(ee_frame)
-    lifting_rew = lifting_rew_weight * object_is_lifted(object, ee_frame, std=0.1, std_height=0.1, desired_height=1.3)
-    ground_hit_avoidance_rew = ground_hit_avoidance_rew_weight * ground_hit_avoidance(object, ee_frame)
+    lifting_rew = lifting_rew_weight * object_is_lifted(tracking_object_positions, ee_frame, std=0.1, std_height=0.1, desired_height=1.3)
+    ground_hit_avoidance_rew = ground_hit_avoidance_rew_weight * ground_hit_avoidance(tracking_object_positions, ee_frame)
     joint_2_tuning_rew = joint_2_tuning_rew_weight * joint_2_tuning(ur5e_joint_pos)
     tray_moved_rew = tray_moved_rew_weight * tray_moved(tray, tray_episode_initial_pos, tray_episode_initial_quat, std=0.1)
     

@@ -28,9 +28,9 @@ class UR5ESortingEnvCfg(DirectRLEnvCfg):
 
     # reward weights
     ee_pos_track_rew_weight = -3.0 # Negative
-    ee_pos_track_fg_rew_weight = 10.0 # Positive
+    ee_pos_track_fg_rew_weight = 20.0 # Positive
     ee_orient_track_rew_weight = -3.0 # Negative
-    lifting_rew_weight = 100.0 # Positive
+    lifting_rew_weight = 75.0 # Positive
     ground_hit_avoidance_rew_weight = 0.0 # Positive
     joint_2_tuning_rew_weight = 2.0 # Negative
     tray_moved_rew_weight = -0.0 # Negative
