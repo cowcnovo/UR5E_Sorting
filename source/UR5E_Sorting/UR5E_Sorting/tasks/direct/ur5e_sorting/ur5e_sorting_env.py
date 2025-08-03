@@ -49,7 +49,12 @@ class UR5ESortingEnv(DirectRLEnv):
         self.tray_episode_initial_quat = self.tray.data.root_quat_w.clone()
 
         self.time_steps = 0
-        self.number_of_visible_objects_class = 1
+        self.number_of_visible_objects_class = torch.ones(
+            (self.num_envs, ), dtype=torch.int, device=self.device
+        )
+        self.environment_episode_number = torch.zeros(
+            (self.num_envs, ), dtype=torch.int, device=self.device
+        )
         self.indices_of_visible_objects_class = torch.zeros(
             (self.num_envs, self.cfg.max_num_of_objects_class), dtype=torch.int, device=self.device
         )
@@ -180,15 +185,15 @@ class UR5ESortingEnv(DirectRLEnv):
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self.actions = actions.clone()
 
-        # increase time steps
+        # Increase time steps
         if self.time_steps == 0:
             # Print info about the training and the objects
             print(f"Episode duration: {self.max_episode_length} timesteps")
-            print(f"Number of objects: {self.cfg.max_num_of_objects_class}")
-            print(f"Timesteps to start adding objects: {self.cfg.start_adding_objects_timestep}")
-            print(f"Timesteps interval for adding objects: {self.cfg.adding_objects_timesteps_interval}")
-            print(f"Required number of timesteps to add all objects: {(self.cfg.max_num_of_objects_class - 1)*self.cfg.adding_objects_timesteps_interval + self.cfg.start_adding_objects_timestep}")
-            
+            print(f"Max number of objects: {self.cfg.max_num_of_objects_class}")
+            print(f"Episode to start adding objects: {self.cfg.start_adding_objects_episode}")
+            print(f"Episodes interval for adding objects: {self.cfg.adding_objects_episodes_interval}")
+            print(f"Required number of episodes to add all objects: {(self.cfg.max_num_of_objects_class - 1)*self.cfg.adding_objects_episodes_interval + self.cfg.start_adding_objects_episode}")
+
         self.time_steps += 1
 
     def _apply_action(self) -> None:
@@ -303,20 +308,31 @@ class UR5ESortingEnv(DirectRLEnv):
         self.tray_episode_initial_pos = self.tray.data.root_pos_w.clone()
         self.tray_episode_initial_quat = self.tray.data.root_quat_w.clone()
 
-        # Gradually increase the number of visible objects in the scene (globally across all environments)
-        if self.time_steps >= self.cfg.start_adding_objects_timestep and (self.time_steps - self.cfg.start_adding_objects_timestep) % self.cfg.adding_objects_timesteps_interval == 0:
-            self.number_of_visible_objects_class += 1
-            if self.number_of_visible_objects_class > self.cfg.max_num_of_objects_class:
-                self.number_of_visible_objects_class = self.cfg.max_num_of_objects_class
+        # Increase the episode number
+        self.environment_episode_number[env_ids] += 1
+
+        # Update the number of visible objects class
+        # For a certain environment, if its episode number is larger or equal to the start_adding_objects_episode, then
+        # increase the environment's number_of_visible_objects_class by 1, every adding_objects_episodes_interval
+        self.number_of_visible_objects_class[env_ids] = torch.where(
+            self.environment_episode_number[env_ids] >= self.cfg.start_adding_objects_episode,
+            torch.clamp(
+                (self.environment_episode_number[env_ids] - self.cfg.start_adding_objects_episode) // self.cfg.adding_objects_episodes_interval + 2,
+                max=self.cfg.max_num_of_objects_class,
+            ),
+            torch.ones(
+                (len(env_ids),),
+                device=self.device, dtype=torch.int
+            ) 
+        )
         
         # Create a list of size (num_envs, self.number_of_visible_objects_class):
         # with random indices between 0 and self.cfg.max_num_of_objects_class - 1, without repitition
-        self.indices_of_visible_objects_class[env_ids, :self.number_of_visible_objects_class] = torch.randint(
-            low=0, high=self.cfg.max_num_of_objects_class,
-            size=(len(env_ids), self.number_of_visible_objects_class),
-            device=self.device,
-            dtype=torch.int,
-        )
+        for env_id in env_ids:
+            num_visible_objects = self.number_of_visible_objects_class[env_id].item()  # Convert to a single integer
+            self.indices_of_visible_objects_class[env_id, :num_visible_objects] = torch.randperm(
+                self.cfg.max_num_of_objects_class, device=self.device, dtype=torch.int
+            )[:num_visible_objects] 
 
         # Randomize the object to track - pick a random class, and pick a random index from self.indices_of_visible_objects_class
         self.tracking_object_class[env_ids] = torch.randint(
@@ -324,11 +340,16 @@ class UR5ESortingEnv(DirectRLEnv):
             device=self.device,
             dtype=torch.int,
         )
-        self.tracking_object_index[env_ids] = self.indices_of_visible_objects_class[env_ids, torch.randint(
-            low=0, high=self.number_of_visible_objects_class, size=(len(env_ids),),
-            device=self.device,
-            dtype=torch.int,
-        )]
+        # Iterate over each environment to handle the random index selection
+        for idx, env_id in enumerate(env_ids):
+            num_visible_objects = self.number_of_visible_objects_class[env_id].item()  # Convert to a single integer
+            self.tracking_object_index[env_id] = self.indices_of_visible_objects_class[env_id, torch.randint(
+                low=0,
+                high=num_visible_objects,  # Use the integer value for high
+                size=(1,),  # Generate a single random index
+                device=self.device,
+                dtype=torch.int,
+            ).item()]  # Extract the single random index
 
         # Randomize all objects
         for class_name in self.cfg.class_names:
@@ -338,7 +359,10 @@ class UR5ESortingEnv(DirectRLEnv):
 
                 # Of size, (len(env_ids),), - check if the number i is in the self.indices_of_visible_objects_class[env_ids, :self.number_of_visible_objects_class]
                 # Also, convert to int
-                object_is_visible = (self.indices_of_visible_objects_class[env_ids, :self.number_of_visible_objects_class] == i).any(dim=1).int()
+                object_is_visible = torch.zeros(len(env_ids), dtype=torch.int, device=self.device)
+                for idx, env_id in enumerate(env_ids):
+                    num_visible_objects = self.number_of_visible_objects_class[env_id].item()
+                    object_is_visible[idx] = (self.indices_of_visible_objects_class[env_id, :num_visible_objects] == i).any().int()
                 z_increment_for_visibility = (1 - object_is_visible) * 4.2  # If the object is not visible, move it up
 
                 # Randomize object pose - the lower and uppoer bounds should be of size (len(env_ids), 3)
@@ -353,6 +377,13 @@ class UR5ESortingEnv(DirectRLEnv):
                 orientations = root_states[:, 3:7]
                 velocities = torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], device=self.device).repeat(len(env_ids), 1)
                 obj.write_root_state_to_sim(torch.cat([positions, orientations, velocities], dim=-1), env_ids=env_ids)
+
+        # Print info
+        print(f"Reset envs: {env_ids}")
+        print(f"Number of visible objects class: {self.number_of_visible_objects_class}")
+        print(f"Indices of visible objects class: {self.indices_of_visible_objects_class}")
+        print(f"Tracking object class: {self.tracking_object_class}")
+        print(f"Tracking object index: {self.tracking_object_index}")
 
 #@torch.jit.script
 def compute_rewards(
