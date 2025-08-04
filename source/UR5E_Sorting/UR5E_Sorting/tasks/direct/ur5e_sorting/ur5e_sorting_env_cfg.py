@@ -37,17 +37,17 @@ class UR5ESortingEnvCfg(DirectRLEnvCfg):
 
     # max number of 
     starting_num_of_objects_class = 4
-    max_num_of_objects_class = 15
+    max_num_of_objects_class = 4
     class_names = ["A", "B"]
 
     # curriculum learning settings
-    start_adding_objects_episode = 2
-    adding_objects_episodes_interval = 2
+    start_adding_objects_episode = 1
+    adding_objects_episodes_interval = 1
 
     # spaces definition
     action_space = 7
     observation_space = {
-        "robot_state": 19
+        "robot_state": 19 + len(class_names)
     }
     state_space = 0
 

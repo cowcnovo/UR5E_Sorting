@@ -228,6 +228,10 @@ class UR5ESortingEnv(DirectRLEnv):
         robot_quat_w = self.ur5e.data.root_state_w[:, 3:7]  # Robot base orientation in world frame
         object_pos_b, _ = subtract_frame_transforms(robot_pos_w, robot_quat_w, object_pos_w)
 
+        tracking_object_classes = torch.nn.functional.one_hot(
+            self.tracking_object_class.long(), num_classes=len(self.cfg.class_names)
+        ).to(self.device)
+
         # Concatenate robot state and object position for observations
         robot_state = torch.cat(
             [
@@ -235,7 +239,8 @@ class UR5ESortingEnv(DirectRLEnv):
                 self.ur5e_joint_vel[:, self.arm_joints_ids],
                 self.ur5e_joint_pos[:, self.gripper_joints_ids],
                 self.ur5e_joint_vel[:, self.gripper_joints_ids],
-                object_pos_b
+                object_pos_b,
+                tracking_object_classes
             ],
             dim=-1,
         )
@@ -249,14 +254,22 @@ class UR5ESortingEnv(DirectRLEnv):
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
+        ee_pos_track_rew_weight = self.cfg.ee_pos_track_rew_weight
+        ee_pos_track_fg_rew_weight = self.cfg.ee_pos_track_fg_rew_weight
+        ee_orient_track_rew_weight = self.cfg.ee_orient_track_rew_weight
+        lifting_rew_weight = self.cfg.lifting_rew_weight if self.time_steps > 10000 else 0.0
+        ground_hit_avoidance_rew_weight = self.cfg.ground_hit_avoidance_rew_weight if self.time_steps > 10000 else 0.0
+        joint_2_tuning_rew_weight = self.cfg.joint_2_tuning_rew_weight if self.time_steps > 10000 else 0.0
+        tray_moved_rew_weight = self.cfg.tray_moved_rew_weight if self.time_steps > 10000 else 0.0
+
         total_reward = compute_rewards(
-            self.cfg.ee_pos_track_rew_weight,
-            self.cfg.ee_pos_track_fg_rew_weight,
-            self.cfg.ee_orient_track_rew_weight,
-            self.cfg.lifting_rew_weight,
-            self.cfg.ground_hit_avoidance_rew_weight,
-            self.cfg.joint_2_tuning_rew_weight,
-            self.cfg.tray_moved_rew_weight,
+            ee_pos_track_rew_weight,
+            ee_pos_track_fg_rew_weight,
+            ee_orient_track_rew_weight,
+            lifting_rew_weight,
+            ground_hit_avoidance_rew_weight,
+            joint_2_tuning_rew_weight,
+            tray_moved_rew_weight,
             self.get_tracking_object_positions(),
             self.ee_frame,
             self.ur5e_joint_pos,
@@ -380,11 +393,11 @@ class UR5ESortingEnv(DirectRLEnv):
                 obj.write_root_state_to_sim(torch.cat([positions, orientations, velocities], dim=-1), env_ids=env_ids)
 
         # Print info
-        print(f"Reset envs: {env_ids}")
-        print(f"Number of visible objects class: {self.number_of_visible_objects_class}")
-        print(f"Indices of visible objects class: {self.indices_of_visible_objects_class}")
-        print(f"Tracking object class: {self.tracking_object_class}")
-        print(f"Tracking object index: {self.tracking_object_index}")
+        # print(f"Reset envs: {env_ids}")
+        # print(f"Number of visible objects class: {self.number_of_visible_objects_class}")
+        # print(f"Indices of visible objects class: {self.indices_of_visible_objects_class}")
+        # print(f"Tracking object class: {self.tracking_object_class}")
+        # print(f"Tracking object index: {self.tracking_object_index}")
 
 #@torch.jit.script
 def compute_rewards(
