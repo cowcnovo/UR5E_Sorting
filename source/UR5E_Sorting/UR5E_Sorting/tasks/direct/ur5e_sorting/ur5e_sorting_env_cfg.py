@@ -28,20 +28,21 @@ class UR5ESortingEnvCfg(DirectRLEnvCfg):
 
     # reward weights
     ee_pos_track_rew_weight = -3.0 # Negative
-    ee_pos_track_fg_rew_weight = 20.0 # Positive
+    ee_pos_track_fg_rew_weight = 10.0 # Positive
     ee_orient_track_rew_weight = -3.0 # Negative
     lifting_rew_weight = 75.0 # Positive
     ground_hit_avoidance_rew_weight = 0.0 # Positive
-    joint_2_tuning_rew_weight = 2.0 # Negative
+    joint_2_tuning_rew_weight = -0.0 # Negative
     tray_moved_rew_weight = -0.0 # Negative
 
-    # max number of objects
+    # max number of 
+    starting_num_of_objects_class = 4
     max_num_of_objects_class = 15
     class_names = ["A", "B"]
 
     # curriculum learning settings
-    start_adding_objects_episode = 15
-    adding_objects_episodes_interval = 4
+    start_adding_objects_episode = 2
+    adding_objects_episodes_interval = 2
 
     # spaces definition
     action_space = 7

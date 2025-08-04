@@ -51,7 +51,7 @@ class UR5ESortingEnv(DirectRLEnv):
         self.time_steps = 0
         self.number_of_visible_objects_class = torch.ones(
             (self.num_envs, ), dtype=torch.int, device=self.device
-        )
+        ) * self.cfg.starting_num_of_objects_class
         self.environment_episode_number = torch.zeros(
             (self.num_envs, ), dtype=torch.int, device=self.device
         )
@@ -318,13 +318,13 @@ class UR5ESortingEnv(DirectRLEnv):
         self.number_of_visible_objects_class[env_ids] = torch.where(
             self.environment_episode_number[env_ids] >= self.cfg.start_adding_objects_episode,
             torch.clamp(
-                (self.environment_episode_number[env_ids] - self.cfg.start_adding_objects_episode) // self.cfg.adding_objects_episodes_interval + 2,
+                (self.environment_episode_number[env_ids] - self.cfg.start_adding_objects_episode) // self.cfg.adding_objects_episodes_interval + (1 + self.cfg.starting_num_of_objects_class),
                 max=self.cfg.max_num_of_objects_class,
             ),
             torch.ones(
                 (len(env_ids),),
                 device=self.device, dtype=torch.int
-            ) 
+            ) * self.cfg.starting_num_of_objects_class
         )
         
         # Create a list of size (num_envs, self.number_of_visible_objects_class):
@@ -380,11 +380,11 @@ class UR5ESortingEnv(DirectRLEnv):
                 obj.write_root_state_to_sim(torch.cat([positions, orientations, velocities], dim=-1), env_ids=env_ids)
 
         # Print info
-        # print(f"Reset envs: {env_ids}")
-        # print(f"Number of visible objects class: {self.number_of_visible_objects_class}")
-        # print(f"Indices of visible objects class: {self.indices_of_visible_objects_class}")
-        # print(f"Tracking object class: {self.tracking_object_class}")
-        # print(f"Tracking object index: {self.tracking_object_index}")
+        print(f"Reset envs: {env_ids}")
+        print(f"Number of visible objects class: {self.number_of_visible_objects_class}")
+        print(f"Indices of visible objects class: {self.indices_of_visible_objects_class}")
+        print(f"Tracking object class: {self.tracking_object_class}")
+        print(f"Tracking object index: {self.tracking_object_index}")
 
 #@torch.jit.script
 def compute_rewards(
