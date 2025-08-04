@@ -36,12 +36,12 @@ class UR5ESortingEnvCfg(DirectRLEnvCfg):
     tray_moved_rew_weight = -0.0 # Negative
 
     # max number of objects
-    max_num_of_objects_class = 10
+    max_num_of_objects_class = 15
     class_names = ["A", "B"]
 
     # curriculum learning settings
-    start_adding_objects_episode = 3
-    adding_objects_episodes_interval = 1
+    start_adding_objects_episode = 15
+    adding_objects_episodes_interval = 4
 
     # spaces definition
     action_space = 7

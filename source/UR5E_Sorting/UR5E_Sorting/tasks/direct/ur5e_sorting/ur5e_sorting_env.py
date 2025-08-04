@@ -193,6 +193,7 @@ class UR5ESortingEnv(DirectRLEnv):
             print(f"Episode to start adding objects: {self.cfg.start_adding_objects_episode}")
             print(f"Episodes interval for adding objects: {self.cfg.adding_objects_episodes_interval}")
             print(f"Required number of episodes to add all objects: {(self.cfg.max_num_of_objects_class - 1)*self.cfg.adding_objects_episodes_interval + self.cfg.start_adding_objects_episode}")
+            print(f"Required number of timesteps to add all objects: {((self.cfg.max_num_of_objects_class - 1)*self.cfg.adding_objects_episodes_interval + self.cfg.start_adding_objects_episode)*self.max_episode_length} timesteps")
 
         self.time_steps += 1
 
@@ -379,11 +380,11 @@ class UR5ESortingEnv(DirectRLEnv):
                 obj.write_root_state_to_sim(torch.cat([positions, orientations, velocities], dim=-1), env_ids=env_ids)
 
         # Print info
-        print(f"Reset envs: {env_ids}")
-        print(f"Number of visible objects class: {self.number_of_visible_objects_class}")
-        print(f"Indices of visible objects class: {self.indices_of_visible_objects_class}")
-        print(f"Tracking object class: {self.tracking_object_class}")
-        print(f"Tracking object index: {self.tracking_object_index}")
+        # print(f"Reset envs: {env_ids}")
+        # print(f"Number of visible objects class: {self.number_of_visible_objects_class}")
+        # print(f"Indices of visible objects class: {self.indices_of_visible_objects_class}")
+        # print(f"Tracking object class: {self.tracking_object_class}")
+        # print(f"Tracking object index: {self.tracking_object_index}")
 
 #@torch.jit.script
 def compute_rewards(
