@@ -47,7 +47,7 @@ class UR5ESortingEnvCfg(DirectRLEnvCfg):
     # spaces definition
     action_space = 7
     observation_space = {
-        "robot_state": 19 + len(class_names)
+        "robot_state": 8 + 3 + len(class_names)
     }
     state_space = 0
 

@@ -236,9 +236,7 @@ class UR5ESortingEnv(DirectRLEnv):
         robot_state = torch.cat(
             [
                 self.ur5e_joint_pos[:, self.arm_joints_ids],
-                self.ur5e_joint_vel[:, self.arm_joints_ids],
                 self.ur5e_joint_pos[:, self.gripper_joints_ids],
-                self.ur5e_joint_vel[:, self.gripper_joints_ids],
                 object_pos_b,
                 tracking_object_classes
             ],
