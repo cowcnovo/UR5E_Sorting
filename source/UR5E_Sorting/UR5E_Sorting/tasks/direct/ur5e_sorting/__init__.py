@@ -21,3 +21,13 @@ gym.register(
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
     },
 )
+
+gym.register(
+    id="Template-UR5E-Sorting-Direct-v0-Play",
+    entry_point=f"{__name__}.ur5e_sorting_env:UR5ESortingEnv_Play",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.ur5e_sorting_env_cfg:UR5ESortingEnvCfg_Play",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
+    },
+)

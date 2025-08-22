@@ -38,13 +38,13 @@ class UR5ESortingEnvCfg(DirectRLEnvCfg):
     joint_vel_rew_weight = -6e-4
     action_rate_rew_weight = -1e-4
 
-    # max number of 
+    # max number of objects
     starting_num_of_objects_class = 1
     max_num_of_objects_class = 1
     class_names = ["A", "B"]
 
     # curriculum learning settings
-    start_adding_objects_episode = 1
+    start_adding_objects_episode = 2
     adding_objects_episodes_interval = 1
 
     # spaces definition
@@ -56,4 +56,9 @@ class UR5ESortingEnvCfg(DirectRLEnvCfg):
 
     sim.physx.gpu_max_rigid_patch_count = 1024*1024
 
-    
+@configclass
+class UR5ESortingEnvCfg_Play(UR5ESortingEnvCfg):
+    max_num_of_objects_class = 10
+    starting_num_of_objects_class = 1
+    start_adding_objects_episode = 2
+    adding_objects_episodes_interval = 1

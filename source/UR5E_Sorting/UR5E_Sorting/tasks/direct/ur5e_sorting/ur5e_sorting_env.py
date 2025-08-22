@@ -24,7 +24,7 @@ from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from isaaclab.sensors import CameraCfg, TiledCameraCfg, TiledCamera
 from isaaclab.utils.math import subtract_frame_transforms, combine_frame_transforms
 
-from .ur5e_sorting_env_cfg import UR5ESortingEnvCfg
+from .ur5e_sorting_env_cfg import UR5ESortingEnvCfg, UR5ESortingEnvCfg_Play
 
 
 from .mdp.rewards import object_position_error, object_position_error_tanh, end_effector_orientation_error
@@ -410,6 +410,15 @@ class UR5ESortingEnv(DirectRLEnv):
         # print(f"Indices of visible objects class: {self.indices_of_visible_objects_class}")
         # print(f"Tracking object class: {self.tracking_object_class}")
         # print(f"Tracking object index: {self.tracking_object_index}")
+
+
+class UR5ESortingEnv_Play(UR5ESortingEnv):
+
+    cfg: UR5ESortingEnvCfg_Play
+
+    def __init__(self, cfg: UR5ESortingEnvCfg_Play, render_mode: str | None = None, **kwargs):
+        super().__init__(cfg, render_mode, **kwargs)
+
 
 #@torch.jit.script
 def compute_rewards(
