@@ -76,14 +76,14 @@ UR5E_CONFIG = ArticulationCfg(
         ),
         "left_outer_knuckle_joint_act": ImplicitActuatorCfg(
             joint_names_expr=["left_outer_knuckle_joint"],
-            effort_limit_sim=20.0,
+            effort_limit_sim=5.0,
             velocity_limit_sim=1.5,
             stiffness=60.0,
             damping=20.0,
         ),
         "right_outer_knuckle_joint_act": ImplicitActuatorCfg(
             joint_names_expr=["right_outer_knuckle_joint"],
-            effort_limit_sim=20.0,
+            effort_limit_sim=5.0,
             velocity_limit_sim=1.5,
             stiffness=60.0,
             damping=20.0,

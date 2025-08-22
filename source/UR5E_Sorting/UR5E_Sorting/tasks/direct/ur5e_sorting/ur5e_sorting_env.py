@@ -28,7 +28,8 @@ from .ur5e_sorting_env_cfg import UR5ESortingEnvCfg
 
 
 from .mdp.rewards import object_position_error, object_position_error_tanh, end_effector_orientation_error
-from .mdp.rewards import object_is_lifted, ground_hit_avoidance, joint_2_tuning, tray_moved
+from .mdp.rewards import object_is_lifted, ground_hit_avoidance, joint_2_tuning
+from .mdp.rewards import gripper_reward, object_moved_xy, action_rate_reward, joint_vel_reward
 
 
 class UR5ESortingEnv(DirectRLEnv):
@@ -64,6 +65,9 @@ class UR5ESortingEnv(DirectRLEnv):
         self.tracking_object_class = torch.zeros(
             (self.num_envs, ), dtype=torch.int, device=self.device
         )
+
+        self.previous_actions = torch.zeros((self.num_envs, 7), device=self.device)
+        self.original_tracking_object_pos = self.get_tracking_object_positions().clone()
         
 
     def _setup_scene(self):
@@ -237,8 +241,11 @@ class UR5ESortingEnv(DirectRLEnv):
             [
                 self.ur5e_joint_pos[:, self.arm_joints_ids],
                 self.ur5e_joint_pos[:, self.gripper_joints_ids],
-                object_pos_b,
-                tracking_object_classes
+                self.ur5e_joint_vel[:, self.arm_joints_ids],
+                self.ur5e_joint_vel[:, self.gripper_joints_ids],
+                self.actions[:, -1].unsqueeze(-1), # gripper action
+                tracking_object_classes,
+                object_pos_b
             ],
             dim=-1,
         )
@@ -252,29 +259,34 @@ class UR5ESortingEnv(DirectRLEnv):
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
-        ee_pos_track_rew_weight = self.cfg.ee_pos_track_rew_weight
-        ee_pos_track_fg_rew_weight = self.cfg.ee_pos_track_fg_rew_weight
-        ee_orient_track_rew_weight = self.cfg.ee_orient_track_rew_weight
-        lifting_rew_weight = self.cfg.lifting_rew_weight if self.time_steps > 10000 else 0.0
-        ground_hit_avoidance_rew_weight = self.cfg.ground_hit_avoidance_rew_weight if self.time_steps > 10000 else 0.0
-        joint_2_tuning_rew_weight = self.cfg.joint_2_tuning_rew_weight if self.time_steps > 10000 else 0.0
-        tray_moved_rew_weight = self.cfg.tray_moved_rew_weight if self.time_steps > 10000 else 0.0
+
+        phase_2 = self.time_steps >= 10000
+        phase_3 = self.time_steps >= 20000
+        phase_4 = self.time_steps >= 30000
 
         total_reward = compute_rewards(
-            ee_pos_track_rew_weight,
-            ee_pos_track_fg_rew_weight,
-            ee_orient_track_rew_weight,
-            lifting_rew_weight,
-            ground_hit_avoidance_rew_weight,
-            joint_2_tuning_rew_weight,
-            tray_moved_rew_weight,
+            self.cfg.ee_pos_track_rew_weight,
+            self.cfg.ee_pos_track_fg_rew_weight,
+            self.cfg.ee_orient_track_rew_weight,
+            self.cfg.lifting_rew_weight if phase_3 else 0.0,
+            self.cfg.ground_hit_avoidance_rew_weight,
+            self.cfg.joint_2_tuning_rew_weight,
+            self.cfg.gripper_rew_weight if phase_2 else 0.0,
+            self.cfg.object_moved_rew_weight,
+            self.cfg.joint_vel_rew_weight,
+            self.cfg.action_rate_rew_weight,
+            self.previous_actions,
+            self.actions,
+            self.original_tracking_object_pos,
             self.get_tracking_object_positions(),
             self.ee_frame,
             self.ur5e_joint_pos,
-            self.tray,
-            self.tray_episode_initial_pos,
-            self.tray_episode_initial_quat,
+            self.ur5e_joint_vel,
+            self.arm_joints_ids,
         )
+
+        self.previous_actions = self.actions.clone()
+
         return total_reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -390,6 +402,8 @@ class UR5ESortingEnv(DirectRLEnv):
                 velocities = torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], device=self.device).repeat(len(env_ids), 1)
                 obj.write_root_state_to_sim(torch.cat([positions, orientations, velocities], dim=-1), env_ids=env_ids)
 
+        self.original_tracking_object_pos[env_ids] = self.get_tracking_object_positions().clone()[env_ids]
+
         # Print info
         # print(f"Reset envs: {env_ids}")
         # print(f"Number of visible objects class: {self.number_of_visible_objects_class}")
@@ -405,21 +419,29 @@ def compute_rewards(
     lifting_rew_weight: float,
     ground_hit_avoidance_rew_weight: float,
     joint_2_tuning_rew_weight: float,
-    tray_moved_rew_weight: float,
+    gripper_rew_weight: float,
+    object_moved_rew_weight: float,
+    joint_vel_rew_weight: float,
+    action_rate_rew_weight: float,
+    previous_actions: torch.Tensor,
+    actions: torch.Tensor,
+    original_tracking_object_pos: torch.Tensor,
     tracking_object_positions: torch.Tensor,
     ee_frame: FrameTransformer,
     ur5e_joint_pos: torch.Tensor,
-    tray: RigidObject,
-    tray_episode_initial_pos: torch.Tensor,
-    tray_episode_initial_quat: torch.Tensor,
+    ur5e_joint_vel: torch.Tensor,
+    arm_joints_ids: tuple,
 ):
     ee_pos_track_rew = ee_pos_track_rew_weight * object_position_error(tracking_object_positions, ee_frame)
     ee_pos_track_fg_rew = ee_pos_track_fg_rew_weight * object_position_error_tanh(tracking_object_positions, ee_frame, std=0.1)
     ee_orient_track_rew = ee_orient_track_rew_weight * end_effector_orientation_error(ee_frame)
     lifting_rew = lifting_rew_weight * object_is_lifted(tracking_object_positions, ee_frame, std=0.1, std_height=0.1, desired_height=1.3)
     ground_hit_avoidance_rew = ground_hit_avoidance_rew_weight * ground_hit_avoidance(tracking_object_positions, ee_frame)
-    joint_2_tuning_rew = joint_2_tuning_rew_weight * joint_2_tuning(ur5e_joint_pos)
-    tray_moved_rew = tray_moved_rew_weight * tray_moved(tray, tray_episode_initial_pos, tray_episode_initial_quat, std=0.1)
+    joint_2_tuning_rew = joint_2_tuning_rew_weight * joint_2_tuning(ur5e_joint_pos, std=0.4)
+    gripper_rew = gripper_rew_weight * gripper_reward(actions, tracking_object_positions, ee_frame)
+    object_moved_rew = object_moved_rew_weight * object_moved_xy(tracking_object_positions, original_tracking_object_pos)
+    joint_vel_rew = joint_vel_rew_weight * joint_vel_reward(ur5e_joint_vel, arm_joints_ids)
+    action_rate_rew = action_rate_rew_weight * action_rate_reward(previous_actions, actions)
     
-    total_reward = ee_pos_track_rew + ee_pos_track_fg_rew + ee_orient_track_rew + lifting_rew + ground_hit_avoidance_rew + joint_2_tuning_rew + tray_moved_rew
+    total_reward = ee_pos_track_rew + ee_pos_track_fg_rew + ee_orient_track_rew + lifting_rew + ground_hit_avoidance_rew + joint_2_tuning_rew + gripper_rew + object_moved_rew + joint_vel_rew + action_rate_rew
     return total_reward
