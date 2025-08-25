@@ -47,6 +47,10 @@ class UR5ESortingEnvCfg(DirectRLEnvCfg):
     start_adding_objects_episode = 2
     adding_objects_episodes_interval = 1
 
+    # camera settings
+    camera_width = 1280
+    camera_height = 960
+
     # spaces definition
     action_space = 7
     observation_space = {

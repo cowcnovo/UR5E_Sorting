@@ -31,6 +31,8 @@ from .mdp.rewards import object_position_error, object_position_error_tanh, end_
 from .mdp.rewards import object_is_lifted, ground_hit_avoidance, joint_2_tuning
 from .mdp.rewards import gripper_reward, object_moved_xy, action_rate_reward, joint_vel_reward
 
+from .object_detection import inference
+
 
 class UR5ESortingEnv(DirectRLEnv):
     cfg: UR5ESortingEnvCfg
@@ -236,6 +238,21 @@ class UR5ESortingEnv(DirectRLEnv):
             self.tracking_object_class.long(), num_classes=len(self.cfg.class_names)
         ).to(self.device)
 
+        # Object detected position in the robot's base frame
+        # object_position = inference(self.camera) # Object position in camera frame
+        # object_position = torch.stack(
+        #     [
+        #         object_position[:, 2],  # z -> x
+        #         -object_position[:, 0],  # x -> -y
+        #         -object_position[:, 1],  # y -> -z
+        #     ],
+        #     dim=-1,
+        # )
+        # camera_pos_b = self.camera.data.pos_w # Camera position in world frame
+        # camera_quat_b = self.camera.data.quat_w_world # Camera orientation in world frame
+        # camera_pos_r, camera_quat_r = subtract_frame_transforms(robot_pos_w, robot_quat_w, camera_pos_b, camera_quat_b) # Transform camera position to robot base frame
+        # object_detected_position, _ = combine_frame_transforms(camera_pos_r, camera_quat_r, object_position) # Transform object position from camera frame to robot base frame
+
         # Concatenate robot state and object position for observations
         robot_state = torch.cat(
             [
@@ -418,6 +435,27 @@ class UR5ESortingEnv_Play(UR5ESortingEnv):
 
     def __init__(self, cfg: UR5ESortingEnvCfg_Play, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
+
+    def _setup_scene(self):
+        super()._setup_scene()
+
+        # Camera
+        camera_cfg = TiledCameraCfg(
+            prim_path="/World/envs/env_.*/camera",
+            data_types=["rgb", "depth"],
+            spawn=sim_utils.PinholeCameraCfg(
+                focal_length=1.5, focus_distance=0.8, horizontal_aperture=3.896,
+            ),
+            width=self.cfg.camera_width,
+            height=self.cfg.camera_height,
+            update_period=1/20,
+            offset=CameraCfg.OffsetCfg(
+                pos=(1.0, 0.0, 1.85), 
+                rot=(-0.24184, 0.66446, 0.66446, -0.24184), # real, x, y, z (zyx rotation with frames changing with each subrotation)
+            ),
+        )
+        self.camera = TiledCamera(cfg=camera_cfg)
+        self.scene.sensors["camera"] = self.camera
 
 
 #@torch.jit.script
