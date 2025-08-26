@@ -35,7 +35,7 @@ def gripper_reward(actions: torch.Tensor, tracking_object_positions: torch.Tenso
     
     reward = gripper_closed * object_is_close
 
-    print(f"Gripper closed: {gripper_closed}, Distance: {distance_to_object}, Reward: {reward}")
+    #print(f"Gripper closed: {gripper_closed}, Distance: {distance_to_object}, Reward: {reward}")
 
     return reward
 

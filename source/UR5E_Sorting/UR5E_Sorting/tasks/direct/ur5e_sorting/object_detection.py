@@ -64,6 +64,11 @@ def inference(
         p_c = (inv_K @ p) * z
 
         object_coords[i] = p_c 
+    
+    # Get object classes
+    object_classes = torch.zeros(len(images), device=device, dtype=torch.int64)
+    for i in range(len(results)):
+        object_classes[i] = int(results[i].boxes.cls[0])  # Take the class of the first detected object
 
     # Printing
     # print("\n\nResults for Env 1:")
@@ -80,4 +85,4 @@ def inference(
     # if len(object_distances) > 0:
     #     print(f"Object Distance: {object_distances[0]}")
 
-    return object_coords
+    return object_coords, object_classes
