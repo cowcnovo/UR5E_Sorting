@@ -422,7 +422,7 @@ class UR5ESortingEnv_Play(UR5ESortingEnv):
     def __init__(self, cfg: UR5ESortingEnvCfg_Play, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
-        self.highest_confidence_object_position = torch.zeros((self.num_envs, 3), device=self.device)
+        self.highest_confidence_object_image_position = torch.zeros((self.num_envs, 3), device=self.device)
         self.highest_confidence_object_class = torch.zeros((self.num_envs,), device=self.device, dtype=torch.int64)
 
     def _setup_scene(self):
@@ -451,32 +451,32 @@ class UR5ESortingEnv_Play(UR5ESortingEnv):
         # Update the self.highest_confidence_object_position and self.highest_confidence_object_class when self.episode_length_buf == 25 for that env
         for env_id in range(self.num_envs):
             if self.episode_length_buf[env_id] == 25:
-                object_position, object_detected_class = inference(self.camera)
-                object_position = torch.stack(
+                object_image_position, object_class = inference(self.camera)
+                object_image_position = torch.stack(
                     [
-                        object_position[:, 2],  # z -> x
-                        -object_position[:, 0],  # x -> -y
-                        -object_position[:, 1],  # y -> -z
+                        object_image_position[:, 2],  # z -> x
+                        -object_image_position[:, 0],  # x -> -y
+                        -object_image_position[:, 1],  # y -> -z
                     ],
                     dim=-1,
                 )
-                self.highest_confidence_object_position[env_id] = object_position[env_id]
-                self.highest_confidence_object_class[env_id] = object_detected_class[env_id]
+                self.highest_confidence_object_image_position[env_id] = object_image_position[env_id]
+                self.highest_confidence_object_class[env_id] = object_class[env_id]
         
         robot_pos_w = self.ur5e.data.root_state_w[:, :3]  # Robot base position in world frame
         robot_quat_w = self.ur5e.data.root_state_w[:, 3:7]  # Robot base orientation in world frame
         camera_pos_b = self.camera.data.pos_w # Camera position in world frame
         camera_quat_b = self.camera.data.quat_w_world # Camera orientation in world frame
         camera_pos_r, camera_quat_r = subtract_frame_transforms(robot_pos_w, robot_quat_w, camera_pos_b, camera_quat_b) # Transform camera position to robot base frame
-        object_detected_position, _ = combine_frame_transforms(camera_pos_r, camera_quat_r, self.highest_confidence_object_position) # Transform object position from camera frame to robot base frame
+        tracking_object_detected_position, _ = combine_frame_transforms(camera_pos_r, camera_quat_r, self.highest_confidence_object_image_position) # Transform object position from camera frame to robot base frame
 
-        tracking_object_classes = torch.nn.functional.one_hot(
+        tracking_object_detected_class = torch.nn.functional.one_hot(
             self.highest_confidence_object_class.long(), num_classes=len(self.cfg.class_names)
         ).to(self.device)
 
         print("\n")
-        print(f"Object detected position: {object_detected_position}")
-        print(f"Object detected class: {tracking_object_classes}")
+        print(f"Object detected position: {tracking_object_detected_position}")
+        print(f"Object detected class: {tracking_object_detected_class}")
         
         # Concatenate robot state and object position for observations
         robot_state = torch.cat(
@@ -486,8 +486,8 @@ class UR5ESortingEnv_Play(UR5ESortingEnv):
                 self.ur5e_joint_vel[:, self.arm_joints_ids],
                 self.ur5e_joint_vel[:, self.gripper_joints_ids],
                 self.actions[:, -1].unsqueeze(-1), # gripper action
-                tracking_object_classes,
-                object_detected_position
+                tracking_object_detected_class,
+                tracking_object_detected_position
             ],
             dim=-1,
         )
