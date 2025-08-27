@@ -70,19 +70,4 @@ def inference(
     for i in range(len(results)):
         object_classes[i] = int(results[i].boxes.cls[0])  # Take the class of the first detected object
 
-    # Printing
-    # print("\n\nResults for Env 1:")
-    # print(f"Number of detected objects: {len(results[0].boxes.xywhn)}")
-    # if len(results[0].boxes.xywhn) > 0:
-    #     print(f"Class of Best: {results[0].boxes.cls[0]}")
-    #     print(f"Confidence of Best: {results[0].boxes.conf[0]}")
-    #     print(f"Bounding Box of Best: {bounding_boxes[0]}")
-    # else:
-    #     print("No objects detected.")
-       
-    # print(f"Shape of Depth Image: {depth_data.shape}")
-
-    # if len(object_distances) > 0:
-    #     print(f"Object Distance: {object_distances[0]}")
-
     return object_coords, object_classes
