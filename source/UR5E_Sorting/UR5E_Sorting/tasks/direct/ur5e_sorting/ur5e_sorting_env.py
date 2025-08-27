@@ -450,7 +450,7 @@ class UR5ESortingEnv_Play(UR5ESortingEnv):
 
         # Update the self.highest_confidence_object_position and self.highest_confidence_object_class when self.episode_length_buf == 25 for that env
         for env_id in range(self.num_envs):
-            if self.episode_length_buf[env_id] == 25:
+            if self.episode_length_buf[env_id] <= 25:
                 object_image_position, object_class = inference(self.camera)
                 object_image_position = torch.stack(
                     [
