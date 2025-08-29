@@ -28,14 +28,14 @@ def joint_vel_reward(ur5e_joint_vel: torch.Tensor, arm_joints_ids: tuple) -> tor
 def gripper_reward(actions: torch.Tensor, tracking_object_positions: torch.Tensor, ee_frame: FrameTransformer) -> torch.Tensor:
 
     distance_to_object = object_position_error(tracking_object_positions, ee_frame)
-    object_is_close = torch.where(distance_to_object < 0.10, 1.0, -1.0)
+    object_is_close = torch.where(distance_to_object < 0.03, 1.0, -1.0)
 
     gripper_action = actions[:, -1].unsqueeze(-1)
     gripper_closed = torch.where(gripper_action < 0, 1.0, -1.0).squeeze()
     
     reward = gripper_closed * object_is_close
 
-    #print(f"Gripper closed: {gripper_closed}, Distance: {distance_to_object}, Reward: {reward}")
+    print(f"Gripper closed: {gripper_closed}, Distance: {distance_to_object}, Reward: {reward}")
 
     return reward
 
@@ -51,13 +51,16 @@ def joint_2_tuning(ur5e_joint_pos: torch.Tensor, std:float) -> torch.Tensor:
     
     return reward
 
-def end_effector_orientation_error(ee_frame: FrameTransformer) -> torch.Tensor:
+def end_effector_orientation_error(ee_frame: FrameTransformer, std: float) -> torch.Tensor:
     number_of_envs = ee_frame.data.target_quat_w.shape[0]
 
     des_quat_w = torch.tensor([0.0, 0.0, 1.0, 0.0], device=ee_frame.device).repeat(number_of_envs, 1)
     curr_quat_w = ee_frame.data.target_quat_w[:, 0, :]
 
-    return quat_error_magnitude(curr_quat_w, des_quat_w)
+    error = quat_error_magnitude(curr_quat_w, des_quat_w)
+    reward = torch.cos(error / std)
+
+    return reward
 
 def object_position_error(tracking_object_positions: torch.Tensor, ee_frame: FrameTransformer) -> torch.Tensor:
     cube_pos_w = tracking_object_positions  # Object position in world frame

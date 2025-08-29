@@ -27,20 +27,20 @@ class UR5ESortingEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=1, env_spacing=2.5, replicate_physics=True)
 
     # reward weights
-    ee_pos_track_rew_weight = -5.0
-    ee_pos_track_fg_rew_weight = 20.0
-    ee_orient_track_rew_weight = -6.0
-    lifting_rew_weight = 50.0
-    ground_hit_avoidance_rew_weight = 0.50
+    ee_pos_track_rew_weight = -7.0
+    ee_pos_track_fg_rew_weight = 25.0
+    ee_orient_track_rew_weight = 10.0
+    lifting_rew_weight = 0.0
+    ground_hit_avoidance_rew_weight = 2.0
     joint_2_tuning_rew_weight = 3.0
     gripper_rew_weight = 10.0
-    object_moved_rew_weight = 0.0
+    object_moved_rew_weight = -10.0
     joint_vel_rew_weight = -6e-4
     action_rate_rew_weight = -1e-4
 
     # max number of objects
-    starting_num_of_objects_class = 1
-    max_num_of_objects_class = 1
+    starting_num_of_objects_class = 5
+    max_num_of_objects_class = 10
     class_names = ["A", "B"]
 
     # curriculum learning settings
@@ -54,7 +54,7 @@ class UR5ESortingEnvCfg(DirectRLEnvCfg):
     # spaces definition
     action_space = 7
     observation_space = {
-        "robot_state": 8 + 8 + 1 + len(class_names) + 3
+        "robot_state": 8 + 8 + 1 + 3 #+ len(class_names) 
     }
     state_space = 0
 

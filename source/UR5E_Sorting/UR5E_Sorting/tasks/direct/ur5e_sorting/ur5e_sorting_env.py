@@ -234,9 +234,9 @@ class UR5ESortingEnv(DirectRLEnv):
         robot_quat_w = self.ur5e.data.root_state_w[:, 3:7]  # Robot base orientation in world frame
         object_pos_b, _ = subtract_frame_transforms(robot_pos_w, robot_quat_w, object_pos_w)
 
-        tracking_object_classes = torch.nn.functional.one_hot(
-            self.tracking_object_class.long(), num_classes=len(self.cfg.class_names)
-        ).to(self.device)
+        # tracking_object_classes = torch.nn.functional.one_hot(
+        #     self.tracking_object_class.long(), num_classes=len(self.cfg.class_names)
+        # ).to(self.device)
         
 
         # Concatenate robot state and object position for observations
@@ -247,7 +247,7 @@ class UR5ESortingEnv(DirectRLEnv):
                 self.ur5e_joint_vel[:, self.arm_joints_ids],
                 self.ur5e_joint_vel[:, self.gripper_joints_ids],
                 self.actions[:, -1].unsqueeze(-1), # gripper action
-                tracking_object_classes,
+                #tracking_object_classes,
                 object_pos_b
             ],
             dim=-1,
@@ -267,14 +267,16 @@ class UR5ESortingEnv(DirectRLEnv):
         phase_3 = self.time_steps >= 20000
         phase_4 = self.time_steps >= 30000
 
+        # SInce this is simulating clutter from a transffered trained policy, we can already start with the weights
+
         total_reward = compute_rewards(
             self.cfg.ee_pos_track_rew_weight,
             self.cfg.ee_pos_track_fg_rew_weight,
             self.cfg.ee_orient_track_rew_weight,
-            self.cfg.lifting_rew_weight if phase_3 else 0.0,
+            self.cfg.lifting_rew_weight,
             self.cfg.ground_hit_avoidance_rew_weight,
             self.cfg.joint_2_tuning_rew_weight,
-            self.cfg.gripper_rew_weight if phase_2 else 0.0,
+            self.cfg.gripper_rew_weight,
             self.cfg.object_moved_rew_weight,
             self.cfg.joint_vel_rew_weight,
             self.cfg.action_rate_rew_weight,
@@ -486,7 +488,7 @@ class UR5ESortingEnv_Play(UR5ESortingEnv):
                 self.ur5e_joint_vel[:, self.arm_joints_ids],
                 self.ur5e_joint_vel[:, self.gripper_joints_ids],
                 self.actions[:, -1].unsqueeze(-1), # gripper action
-                tracking_object_detected_class,
+                #tracking_object_detected_class,
                 tracking_object_detected_position
             ],
             dim=-1,
@@ -524,7 +526,7 @@ def compute_rewards(
 ):
     ee_pos_track_rew = ee_pos_track_rew_weight * object_position_error(tracking_object_positions, ee_frame)
     ee_pos_track_fg_rew = ee_pos_track_fg_rew_weight * object_position_error_tanh(tracking_object_positions, ee_frame, std=0.1)
-    ee_orient_track_rew = ee_orient_track_rew_weight * end_effector_orientation_error(ee_frame)
+    ee_orient_track_rew = ee_orient_track_rew_weight * end_effector_orientation_error(ee_frame, std=1.0)
     lifting_rew = lifting_rew_weight * object_is_lifted(tracking_object_positions, ee_frame, std=0.1, std_height=0.1, desired_height=1.3)
     ground_hit_avoidance_rew = ground_hit_avoidance_rew_weight * ground_hit_avoidance(tracking_object_positions, ee_frame)
     joint_2_tuning_rew = joint_2_tuning_rew_weight * joint_2_tuning(ur5e_joint_pos, std=0.4)
